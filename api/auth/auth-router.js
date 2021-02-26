@@ -1,52 +1,66 @@
 const router = require('express').Router();
 const User = require('../users/users-model')
 const bcrypt = require('bcryptjs')
-const mw = require('../middleware/middleware')
+const jwt = require('jsonwebtoken')
+const { isValid } = require('../users/users-service');
+const { jwtSecret } = require('../../config/secrets');
 
-router.post('/register', mw.checkPayload, mw.checkUserInDb, async (req, res) => {
- try{
-    const hash = bcrypt.hashSync(req.body.password, 10)
-    const newUser = await User.add({username: req.body.username, password: hash })
-    res.status(201).json(newUser)
- } catch(error){
-    res.status(500).json({message: error.message})
- }
+router.post('/register', (req, res) => {
+  const credentials = req.body
+
+  if(isValid(credentials)){
+    const rounds = process.env.BCRYPT_ROUNDS || 10
+    const hash = bcrypt.hashSync(req.body.password, rounds)
+
+    credentials.password = hash
+
+    User.add(credentials)
+    .then((user) =>{
+      res.status(201).json(user)
+    })
+    .catch((error) =>{
+      res.status(500).json({message: error.message})
+    })
+  } else{
+    res.status(400).json({message: 'Please provide username and password'})
+  }
+
 });
 
-router.post('/login', mw.checkPayload, mw.checkUserExists, (req, res) => {
-  // res.end('implement login, please!');
-  /*
-    IMPLEMENT
-    You are welcome to build additional middlewares to help with the endpoint's functionality.
+router.post('/login', (req, res) => {
+  const { username, password } = req.body
+ 
+  if(isValid(req.body)){
+    User.findBy({username: username })
+    .then(([user]) =>{
+      if(user && bcrypt.compareSync(password, user.password)){
+        const token = makeToken(user)
 
-    1- In order to log into an existing account the client must provide `username` and `password`:
-      {
-        "username": "Captain Marvel",
-        "password": "foobar"
+        res.status(200).json({
+          message: `Welcome back ${user.username}`,
+          token
+        })
+      } else{
+        res.status({message: 'Invalid credentials'})
       }
-
-    2- On SUCCESSFUL login,
-      the response body should have `message` and `token`:
-      {
-        "message": "welcome, Captain Marvel",
-        "token": "eyJhbGciOiJIUzI ... ETC ... vUPjZYDSa46Nwz8"
-      }
-
-    3- On FAILED login due to `username` or `password` missing from the request body,
-      the response body should include a string exactly as follows: "username and password required".
-
-    4- On FAILED login due to `username` not existing in the db, or `password` being incorrect,
-      the response body should include a string exactly as follows: "invalid credentials".
-  */
- try{
-   const verified = bcrypt.compareSync(req.body.password, req.userData.password)
-   if(verified){
-     req.user.session = req.userData
-     res.status(200).json({message: `Welcome ${req.userData.username}`})
-   }
- } catch(error){
-   res.status(400).json({message: error.message})
- }
+    })
+    .catch((error) =>{
+      res.status(500).json({message: error.message})
+    });
+  } else{
+    res.status(400).json({message: 'Please provide username and password'})
+  }
 });
+
+function makeToken(user){
+  const payload ={
+    subject: user.id,
+    username: user.username,
+  }
+  const options ={
+    expiresIn: '2h'
+  }
+  return jwt.sign(payload, jwtSecret, options) 
+}
 
 module.exports = router;
