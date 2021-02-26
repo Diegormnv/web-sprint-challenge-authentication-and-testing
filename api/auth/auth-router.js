@@ -39,7 +39,7 @@ router.post('/register', (req, res) => {
       res.status(201).json(user)
     })
     .catch((error) =>{
-      res.status(500).json({message: 'username taken'})
+      res.status(400).json({message: 'username taken'})
     })
   } else{
     res.status(400).json({message: 'username and password required'})
@@ -80,7 +80,7 @@ router.post('/login', (req, res) => {
           token
         })
       } else{
-        res.status({message: 'invalid credentials'})
+        res.status(400).json({message: 'invalid credentials'})
       }
     })
     .catch((error) =>{
